@@ -8,7 +8,7 @@ import * as decoder from 'abi-decoder';
 
 import { Transaction, ERC20Token, ParsedUniswapTx } from './types';
 import { parseUniswapTx } from './Parser';
-import { CloudflareEth } from './Cloudflare';
+import { CloudflareEth } from './CloudFlare';
 import { exit } from 'process';
 import { PRIORITY_BELOW_NORMAL } from 'constants';
 
