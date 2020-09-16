@@ -8,9 +8,8 @@ import * as decoder from 'abi-decoder';
 
 import { Transaction, ERC20Token, ParsedUniswapTx } from './types';
 import { parseUniswapTx } from './Parser';
-import { CloudflareEth } from './CloudFlare';
 import { exit } from 'process';
-import { PRIORITY_BELOW_NORMAL } from 'constants';
+import { DH_NOT_SUITABLE_GENERATOR } from 'constants';
 
 const TOKEN_LIST = config.erc20Tokens.split(' ');
 console.log(TOKEN_LIST);
@@ -28,7 +27,7 @@ if (!config.infuraToken) {
 }
 
 const INFURA = `wss://mainnet.infura.io/ws/v3/${config.infuraToken}`;
-const UniswapRouter = '0x7a250d5630b4cf539739df2c5dacb4c659f2488d';
+const UniswapRouter = '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D';
 const SushiRouter = '0xd9e1ce17f2641f24ae83637ab66a2cca9c378b9f';
 
 const dex = UniswapRouter;
@@ -73,24 +72,34 @@ function filterTx(tx: ParsedUniswapTx | undefined) {
   );
 }
 
+async function infuraScanBlock(height: number) {
+  const blockInfo = await wsProvider._getBlock(height, true);
+  return blockInfo.transactions as Transaction[];
+}
+
 async function scanBlock(height: number) {
   console.log(`scanning Block ${height}`);
-  const txs = await CloudflareEth.scanBlock(height);
+  const txs = await infuraScanBlock(height);
   console.log(`[scanBlock] Got ${txs.length} transactions in block ${height}`);
   for (let i = 0; i < txs.length; i++) {
     const tx = txs[i];
     if (tx.to === dex) {
-      const uniswapTx = decoder.decodeMethod(tx.input);
-      const parsed = await parseUniswapTx(uniswapTx, tx.value);
+      const uniswapTx = decoder.decodeMethod(tx.data);
+      const parsed = await parseUniswapTx(uniswapTx, tx.value.toHexString());
       if (parsed === undefined) {
         console.log(`couldn't parse ${JSON.stringify(uniswapTx)}`);
       }
       console.log(JSON.stringify(parsed, null, 2));
       if (parsed && filterTx(parsed)) {
-        await telegram.sendMessage(CHANNEL_KIRO, buildMessage(parsed, tx));
+        // await telegram.sendMessage(CHANNEL_KIRO, buildMessage(parsed, tx));
       }
     }
   }
 }
 
 wsProvider.on('block', scanBlock);
+
+// wsProvider.on('block', async (num) => {
+//   const info = await wsProvider._getBlock(num);
+//   console.log('-----------', JSON.stringify(info));
+// });

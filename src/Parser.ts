@@ -279,6 +279,37 @@ export async function parseUniswapTx(
     case 'swapTokensForETH':
       break;
 
+    // function swapTokensForExactETH(uint amountOut, uint amountInMax, address[] calldata path, address to, uint deadline)
+    case 'swapTokensForExactETH': {
+      const swapFrom = params[2].value[0];
+      const to = params[3].value;
+
+      const tokenA = await TokenInfo.getToken(swapFrom);
+
+      try {
+        const amtInBn = new bn(params[1].value as string);
+
+        const amtIn = amtInBn.dividedBy(Math.pow(10, tokenA.decimals));
+
+        const amtOutBn = new bn(params[0].value as string);
+        const amtOut = utils.fromWei(amtOutBn.toString(), 'ether');
+
+        // TODO calculate amounts with decimals taken from tokeninfo ?
+        // return `swapETHForExactTokens: ${to} swapped ${value} $ETH for ${amtIn.toString()} $${
+        //   tokenB.symbol
+        // }`;
+        return {
+          action: 'swap',
+          tokenA,
+          tokenB: 'ETH',
+          amountA: amtIn.toString(),
+          amountB: amtOut,
+        };
+      } catch (err) {
+        console.log(`conversion error ${err}`);
+      }
+    }
+
     default:
       return undefined;
   }

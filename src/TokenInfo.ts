@@ -20,7 +20,7 @@ export default class TokenInfo {
         decimals = await tokenContract.decimals();
         symbol = await tokenContract.symbol();
       } catch (err) {
-        console.log(`[TokenInfo.getToken] error ${err} for erc20 at ${address}`);
+        // console.log(`[TokenInfo.getToken] error ${err} for erc20 at ${address}`);
         decimals = 18;
         symbol = address.slice(0, 8);
       }
@@ -29,7 +29,7 @@ export default class TokenInfo {
         symbol,
         address,
       };
-      console.log(`[getToken] got ${JSON.stringify(TokenInfo.tokenCache[address])} for ${address}`);
+      // console.log(`[getToken] got ${JSON.stringify(TokenInfo.tokenCache[address])} for ${address}`);
     }
     return TokenInfo.tokenCache[address];
   }
