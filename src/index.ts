@@ -12,7 +12,8 @@ import { CloudflareEth } from './Cloudflare';
 import { exit } from 'process';
 import { PRIORITY_BELOW_NORMAL } from 'constants';
 
-const TOKEN_LIST = ['KIRO', 'YFI', 'PICKLE', 'SUSHI', 'MTA', 'AMPL', 'SAFE'];
+const TOKEN_LIST = config.erc20Tokens.split(' ');
+console.log(TOKEN_LIST);
 
 const CHANNEL_KIRO = '-1001488214429';
 
