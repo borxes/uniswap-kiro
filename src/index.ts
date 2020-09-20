@@ -9,7 +9,6 @@ import * as decoder from 'abi-decoder';
 import { Transaction, ERC20Token, ParsedUniswapTx } from './types';
 import { parseUniswapTx } from './Parser';
 import { exit } from 'process';
-import { DH_NOT_SUITABLE_GENERATOR } from 'constants';
 
 const TOKEN_LIST = config.erc20Tokens.split(' ');
 console.log(TOKEN_LIST);
@@ -85,21 +84,19 @@ async function scanBlock(height: number) {
     const tx = txs[i];
     if (tx.to === dex) {
       const uniswapTx = decoder.decodeMethod(tx.data);
-      const parsed = await parseUniswapTx(uniswapTx, tx.value.toHexString());
+      const parsed = await parseUniswapTx(uniswapTx, tx.value.toHexString(), tx.hash);
       if (parsed === undefined) {
         console.log(`couldn't parse ${JSON.stringify(uniswapTx)}`);
       }
-      console.log(JSON.stringify(parsed, null, 2));
-      if (parsed && filterTx(parsed)) {
-        // await telegram.sendMessage(CHANNEL_KIRO, buildMessage(parsed, tx));
+      // console.log(JSON.stringify(parsed, null, 2));
+      // if (parsed && filterTx(parsed)) {
+      //   // await telegram.sendMessage(CHANNEL_KIRO, buildMessage(parsed, tx));
+      // }
+      if (parsed && parsed.action === 'add') {
+        console.log(JSON.stringify(parsed), JSON.stringify(tx));
       }
     }
   }
 }
 
 wsProvider.on('block', scanBlock);
-
-// wsProvider.on('block', async (num) => {
-//   const info = await wsProvider._getBlock(num);
-//   console.log('-----------', JSON.stringify(info));
-// });

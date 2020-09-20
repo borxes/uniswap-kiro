@@ -3,16 +3,46 @@ import * as ethers from 'ethers';
 import bn from 'bignumber.js';
 import { UniswapTx, ParsedUniswapTx } from './types';
 
+import UniswapPairABI from './abi/pair.json';
+
 import TokenInfo from './TokenInfo';
+import provider from './Provider';
 import utils from 'web3-utils';
+
+async function parseSwapLog(txHash: string): Promise<ethers.BigNumber[]> {
+  try {
+    const pairInterface = new ethers.utils.Interface(JSON.parse(UniswapPairABI));
+    const receipt = await provider.getTransactionReceipt(txHash);
+    const args = pairInterface.parseLog(receipt.logs[4]).args;
+    console.log('Desc: ', args.length, args);
+    console.log('Args[0]', args[0]);
+    console.log('Type', typeof args);
+    let amount0In: ethers.BigNumber,
+      amount1In: ethers.BigNumber,
+      amount0Out: ethers.BigNumber,
+      amount1Out: ethers.BigNumber;
+    let sender: string, to: string;
+    [sender, amount0In, amount1In, amount0Out, amount1Out, to] = args;
+    let res: BigInt[] = [];
+    return [
+      amount0In.gt(amount1In) ? amount0In : amount1In,
+      amount0Out.gt(amount1Out) ? amount0Out : amount1Out,
+    ];
+  } catch (err) {
+    console.log(`Error parsing ${txHash}: ${err}`);
+    return [];
+  }
+}
 
 export async function parseUniswapTx(
   tx: UniswapTx,
   valueHex: string,
+  txHash: string,
 ): Promise<ParsedUniswapTx | undefined> {
   const { name, params } = tx;
   const valueBN = BigInt(valueHex);
   const value = utils.fromWei(valueBN.toString(), 'ether');
+  let res: ParsedUniswapTx | undefined = undefined;
   switch (name) {
     // function swapExactTokensForETH(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)
     case 'swapExactTokensForETH':
@@ -31,7 +61,7 @@ export async function parseUniswapTx(
           const amtIn = amtInBn.dividedBy(Math.pow(10, tokenA.decimals));
           const amtOutMin = amtOutBn.dividedBy(Math.pow(10, tokenB.decimals));
 
-          return {
+          res = {
             action: 'swap',
             tokenA,
             tokenB,
@@ -59,11 +89,7 @@ export async function parseUniswapTx(
 
           const amtIn = amtInBn.dividedBy(Math.pow(10, tokenA.decimals));
 
-          // TODO calculate amounts with decimals taken from tokeninfo ?
-          // return `swapExactETHForToken: ${to} swapped ${value} $ETH for ${amtIn.toString()} $${
-          //   tokenB.symbol
-          // }`;
-          return {
+          res = {
             action: 'swap',
             tokenA: 'ETH',
             tokenB,
@@ -101,7 +127,7 @@ export async function parseUniswapTx(
         // return `swapExactTokenForTokens: ${to} swapped ${amtIn.toString()} $${
         //   tokenA.symbol
         // } to ${amtOutMin.toString()} $${tokenB.symbol}`;
-        return {
+        res = {
           action: 'swap',
           tokenA,
           tokenB,
@@ -135,7 +161,7 @@ export async function parseUniswapTx(
           const amtA = amtADesired.dividedBy(Math.pow(10, tokenA.decimals));
           const amtB = amtBDesired.dividedBy(Math.pow(10, tokenB.decimals));
           // return `addLiquidity: ${to} added ${amtA} of ${tokenA.symbol} and ${amtB} of ${tokenB.symbol}`;
-          return {
+          res = {
             action: 'add',
             tokenA,
             tokenB,
@@ -166,7 +192,7 @@ export async function parseUniswapTx(
 
           const amtToken = amtTokenDesired.dividedBy(Math.pow(10, token.decimals));
           // return `addLiquidityETH: ${to} added ${amtToken} of ${token.symbol} and ${value} $ETH`;
-          return {
+          res = {
             action: 'add',
             tokenA: token,
             tokenB: 'ETH',
@@ -199,7 +225,7 @@ export async function parseUniswapTx(
           const amtA = amtAMin.dividedBy(Math.pow(10, tokenA.decimals));
           const amtB = amtBMin.dividedBy(Math.pow(10, tokenB.decimals));
           // return `addLiquidity: ${to} added ${amtA} of ${tokenA.symbol} and ${amtB} of ${tokenB.symbol}`;
-          return {
+          res = {
             action: 'remove',
             tokenA,
             tokenB,
@@ -231,7 +257,7 @@ export async function parseUniswapTx(
           const amtToken = amtTokenMin.dividedBy(Math.pow(10, token.decimals));
           const amtETH = amtETHMin.dividedBy(Math.pow(10, token.decimals));
           // return `removeLiquidityETH: ${to} remove ${amtToken} of ${token.symbol} and ${amtETH} $ETH`;
-          return {
+          res = {
             action: 'remove',
             tokenA: token,
             tokenB: 'ETH',
@@ -259,11 +285,7 @@ export async function parseUniswapTx(
 
           const amtIn = amtInBn.dividedBy(Math.pow(10, tokenA.decimals));
 
-          // TODO calculate amounts with decimals taken from tokeninfo ?
-          // return `swapETHForExactTokens: ${to} swapped ${value} $ETH for ${amtIn.toString()} $${
-          //   tokenB.symbol
-          // }`;
-          return {
+          res = {
             action: 'swap',
             tokenA: 'ETH',
             tokenB,
@@ -280,37 +302,51 @@ export async function parseUniswapTx(
       break;
 
     // function swapTokensForExactETH(uint amountOut, uint amountInMax, address[] calldata path, address to, uint deadline)
-    case 'swapTokensForExactETH': {
-      const swapFrom = params[2].value[0];
-      const to = params[3].value;
+    case 'swapTokensForExactETH':
+      {
+        const swapFrom = params[2].value[0];
+        const to = params[3].value;
 
-      const tokenA = await TokenInfo.getToken(swapFrom);
+        const tokenA = await TokenInfo.getToken(swapFrom);
 
-      try {
-        const amtInBn = new bn(params[1].value as string);
+        try {
+          const amtInBn = new bn(params[1].value as string);
 
-        const amtIn = amtInBn.dividedBy(Math.pow(10, tokenA.decimals));
+          const amtIn = amtInBn.dividedBy(Math.pow(10, tokenA.decimals));
 
-        const amtOutBn = new bn(params[0].value as string);
-        const amtOut = utils.fromWei(amtOutBn.toString(), 'ether');
+          const amtOutBn = new bn(params[0].value as string);
+          const amtOut = utils.fromWei(amtOutBn.toString(), 'ether');
 
-        // TODO calculate amounts with decimals taken from tokeninfo ?
-        // return `swapETHForExactTokens: ${to} swapped ${value} $ETH for ${amtIn.toString()} $${
-        //   tokenB.symbol
-        // }`;
-        return {
-          action: 'swap',
-          tokenA,
-          tokenB: 'ETH',
-          amountA: amtIn.toString(),
-          amountB: amtOut,
-        };
-      } catch (err) {
-        console.log(`conversion error ${err}`);
+          // TODO calculate amounts with decimals taken from tokeninfo ?
+          // return `swapETHForExactTokens: ${to} swapped ${value} $ETH for ${amtIn.toString()} $${
+          //   tokenB.symbol
+          // }`;
+          res = {
+            action: 'swap',
+            tokenA,
+            tokenB: 'ETH',
+            amountA: amtIn.toString(),
+            amountB: amtOut,
+          };
+        } catch (err) {
+          console.log(`conversion error ${err}`);
+        }
       }
-    }
+      break;
 
     default:
       return undefined;
+  }
+  if (res?.action === 'swap') {
+    const amounts = await parseSwapLog(txHash);
+    if (amounts.length > 0) {
+      console.log(
+        `replacing ${res.amountA} with ${amounts[0].toString()}, ${
+          res.amountB
+        } with ${amounts[1].toString()}`,
+      );
+      res.amountA = amounts[0].toString();
+      res.amountB = amounts[1].toString();
+    }
   }
 }
